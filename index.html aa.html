@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en" style="color-scheme:dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thikhana of Hunngrys</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{obs:{950:'#07070a',900:'#0e0e13',800:'#16161d',700:'#22222c'},gold:{DEFAULT:'#d4af37',soft:'#ecd48a',deep:'#9a7b1c'},ivory:'#f3eee2'},fontFamily:{display:['Cormorant Garamond','Georgia','serif'],sans:['Manrope','system-ui','sans-serif']}}}}
+</script>
+<style type="text/tailwindcss">
+@layer components{
+ .btn{@apply rounded-full border border-ivory/20 px-4 py-2 text-sm hover:border-gold transition disabled:opacity-50}
+ .btn-g{@apply rounded-full bg-gold text-obs-950 font-bold px-5 py-2 text-sm hover:bg-gold-soft transition disabled:opacity-50}
+ .card{@apply rounded-2xl bg-obs-800 border border-ivory/10 p-5}
+ .inp{@apply w-full bg-obs-950 border border-ivory/20 rounded-xl px-4 py-2.5 focus:border-gold outline-none}
+}
+</style>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{background:radial-gradient(70% 40% at 50% -10%,rgba(212,175,55,.12),transparent),#07070a}
+.glass{background:rgba(14,14,19,.7);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(212,175,55,.25)}
+.skel{background:linear-gradient(90deg,#16161d 25%,#22222c 50%,#16161d 75%);background-size:200% 100%;animation:sk 1.3s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@keyframes pl{50%{box-shadow:0 0 0 6px rgba(212,175,55,0),0 0 28px rgba(212,175,55,.45)}}
+.pulse-new{animation:pl 1.8s infinite}
+@media(prefers-reduced-motion:reduce){.skel,.pulse-new{animation:none}}
+:focus-visible{outline:2px solid #d4af37;outline-offset:2px}
+dialog{max-height:92vh}dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog.fs{width:100%;max-width:100%;height:100%;max-height:100%;border-radius:0;margin:0}
+#bubble{box-shadow:0 8px 30px rgba(212,175,55,.35)}
+@media print{header,nav,#cartBar,#bubble,.noprint{display:none!important}}
+</style>
+</head>
+<body class="font-sans antialiased bg-obs-950 text-ivory">
+<header class="sticky top-0 z-40 glass">
+ <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+  <a href="#home" class="font-display text-2xl font-bold text-gold">Thikhana of Hunngrys</a>
+  <nav id="nav" class="flex items-center gap-1 text-sm" aria-label="Main"></nav>
+ </div>
+</header>
+<main class="max-w-6xl mx-auto px-4 py-8 pb-32">
+ <section id="v-home"></section><section id="v-menu" hidden></section><section id="v-profile" hidden></section><section id="v-waiter" hidden></section><section id="v-counter" hidden></section><section id="v-admin" hidden></section>
+</main>
+<div id="cartBar" class="fixed bottom-5 inset-x-0 z-30 flex justify-center pointer-events-none"></div>
+<button id="bubble" hidden class="fixed top-20 right-4 z-[60] w-14 h-14 rounded-full bg-gold grid place-items-center" data-act="stOpen" aria-label="Open order status"></button>
+<div id="status" hidden class="fixed inset-0 z-[70] bg-obs-950 overflow-y-auto"></div>
+<dialog id="dlg" class="rounded-3xl bg-obs-900 text-ivory border border-gold/30 p-0 w-[94%] max-w-2xl overflow-y-auto"><div id="dlgBody" class="p-6"></div></dialog>
+<div id="toasts" class="fixed top-16 left-4 right-4 sm:left-auto z-[90] space-y-2" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   1. CONFIG
+   ===================================================================== */
+const CFG={
+ SUPABASE_URL:'https://azsqutqlrbqhdknfrqva.supabase.co',
+ SUPABASE_ANON_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6c3F1dHFscmJxaGRrbmZycXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4MDk2ODcsImV4cCI6MjEwOTM4NTY4N30.mpQmgjXwVXf9HD6r9by0dXwnen6d-h_SgIj1TW3h0po',
+ TABLES:12, CUR:'Rs ', CATS:['Starters','Karahi & BBQ','Biryani & Rice','Meethay','Drinks']
+};
+const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
+
+/* =====================================================================
+   2. UTILITIES + STATE
+   ===================================================================== */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>CFG.CUR+Math.round(Number(n)||0).toLocaleString('en-PK');
+const tm=d=>new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+const ss=(k,v)=>{try{if(v===undefined)return sessionStorage.getItem(k);sessionStorage.setItem(k,v)}catch(e){return null}};
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);v===null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){return null}};
+const STATUS={new:{l:'New',c:'#d4af37',e:'🕒',t:'Order received'},preparing:{l:'Preparing',c:'#e08a3c',e:'👨‍🍳',t:'Being prepared'},ready:{l:'Ready',c:'#6fbf8b',e:'🔔',t:'Ready to serve'},served:{l:'Served',c:'#8aa4d6',e:'🍽️',t:'Enjoy your meal'},paid:{l:'Paid',c:'#8a8a94',e:'✅',t:'Paid. Thank you!'},cancelled:{l:'Cancelled',c:'#c25b5b',e:'✖️',t:'Order cancelled'}};
+const ACTIVE=['new','preparing','ready','served'],VIEWS=['home','menu','profile','waiter','counter','admin'];
+const S={menu:[],deals:[],mState:'loading',mErr:'',cart:{},table:null,session:null,profile:null,role:null,orders:[],myOrders:[],oState:'idle',oErr:'',tab:'menu',filter:'all',dlg:null,qrTable:1,authMode:'login',pending:null,draft:{},st:null,stData:null,stOpen:false,unread:false};
+const isStaff=()=>['waiter','counter','admin'].includes(S.role),isWaiter=()=>['waiter','admin'].includes(S.role),isCounter=()=>['counter','admin'].includes(S.role),isAdmin=()=>S.role==='admin';
+function toast(msg,bad){const t=document.createElement('div');t.className='rounded-xl px-4 py-2 text-sm border '+(bad?'bg-red-950 border-red-500/50 text-red-200':'bg-obs-800 border-gold/40');t.textContent=msg;$('#toasts').appendChild(t);setTimeout(()=>t.remove(),4500)}
+/* Runs an async action with a "Working…" button and one uniform error toast. */
+async function run(btn,fn,ok){const old=btn?.textContent;if(btn){btn.disabled=true;btn.textContent='Working…'}
+ try{const r=await fn();if(ok)toast(ok);return r===undefined?true:r}catch(e){console.error(e);toast(e.message||'Something went wrong. Try again.',true)}
+ finally{if(btn){btn.disabled=false;btn.textContent=old}}}
+
+/* =====================================================================
+   3. SUPABASE HELPERS (async/await, all throw on error)
+   ===================================================================== */
+const ok=({data,error})=>{if(error)throw error;return data};
+const API={
+ /* ---- auth ---- */
+ signUp:async(email,password,name)=>ok(await sb.auth.signUp({email,password,options:{data:{full_name:name}}})),
+ signIn:async(email,password)=>ok(await sb.auth.signInWithPassword({email,password})),
+ google:async()=>ok(await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split(/[?#]/)[0]}})),
+ signOut:async()=>{const {error}=await sb.auth.signOut();if(error)throw error},
+ fetchProfile:async()=>ok(await sb.from('profiles').select('*').eq('id',S.session.user.id).maybeSingle()),
+ /* ---- menu + deals ---- */
+ fetchMenu:async all=>{let q=sb.from('menu_items').select('*').order('category').order('name');if(!all)q=q.eq('available',true);return (ok(await q))||[]},
+ fetchDeals:async all=>{let q=sb.from('deals').select('*').order('id');if(!all)q=q.eq('active',true);return (ok(await q))||[]},
+ saveRow:async(table,r)=>{const {id,...f}=r;ok(id?await sb.from(table).update(f).eq('id',id):await sb.from(table).insert(f))},
+ delRow:async(table,id)=>ok(await sb.from(table).delete().eq('id',id)),
+ /* ---- orders: customers use RPCs (secure, no login needed) ---- */
+ placeOrder:async(table,name,lines,comment)=>(ok(await sb.rpc('place_order',{p_table:table,p_name:name,p_items:lines.map(l=>({kind:l.kind,id:l.id,qty:l.qty})),p_comment:comment})))[0],
+ getOrder:async(id,token)=>(ok(await sb.rpc('get_order',{p_id:id,p_token:token})))[0],
+ cancelOrder:async(id,token)=>ok(await sb.rpc('cancel_order',{p_id:id,p_token:token})),
+ /* ---- orders: staff + own history ---- */
+ fetchOrders:async()=>(ok(await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(300)))||[],
+ fetchMine:async()=>(ok(await sb.from('orders').select('*').eq('user_id',S.session.user.id).order('created_at',{ascending:false}).limit(20)))||[],
+ setStatus:async(id,status)=>ok(await sb.from('orders').update({status}).eq('id',id)),
+ closeTable:async n=>ok(await sb.from('orders').update({status:'paid'}).eq('table_id',n).in('status',ACTIVE))
+};
+async function loadMenu(){S.mState='loading';renderAll();
+ try{const [m,d]=await Promise.all([API.fetchMenu(isAdmin()),API.fetchDeals(isAdmin())]);S.menu=m;S.deals=d;S.mState='ready'}catch(e){console.error(e);S.mState='error';S.mErr=e.message}renderAll()}
+async function loadOrders(){if(!S.session)return;S.oState='loading';renderAll();
+ try{if(isStaff())S.orders=await API.fetchOrders();else S.myOrders=await API.fetchMine();S.oState='ready'}catch(e){console.error(e);S.oState='error';S.oErr=e.message}renderAll()}
+let chan=null;
+function subscribeLive(){ // Realtime: staff get orders instantly, everyone gets menu/deal changes
+ if(chan)return;
+ chan=sb.channel('live')
+  .on('postgres_changes',{event:'*',schema:'public',table:'orders'},async()=>{if(!isStaff())return;try{S.orders=await API.fetchOrders();S.oState='ready';renderAll()}catch(e){console.error(e)}})
+  .on('postgres_changes',{event:'*',schema:'public',table:'menu_items'},()=>refreshMenu())
+  .on('postgres_changes',{event:'*',schema:'public',table:'deals'},()=>refreshMenu())
+  .subscribe(s=>{if(s==='CHANNEL_ERROR')console.warn('Realtime unavailable')});
+}
+async function refreshMenu(){try{const [m,d]=await Promise.all([API.fetchMenu(isAdmin()),API.fetchDeals(isAdmin())]);S.menu=m;S.deals=d;renderAll()}catch(e){console.error(e)}}
+
+/* =====================================================================
+   4. ROUTING, NAV, SHARED CARDS
+   ===================================================================== */
+const route=()=>VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'home';
+function renderNav(){const r=route(),l=(h,t)=>`<a href="#${h}" class="px-3 py-1.5 rounded-full ${r===h?'bg-gold text-obs-950 font-bold':'hover:text-gold'}">${t}</a>`;
+ $('#nav').innerHTML=l('home','Home')+l('menu','Menu')+l('profile','Your profile')+(isWaiter()?l('waiter','Waiter'):'')+(isCounter()?l('counter','Counter'):'')+(isAdmin()?l('admin','Admin'):'')}
+const errCard=(m,a)=>`<div class="rounded-2xl border border-red-500/40 bg-red-500/10 p-5">Could not load data: ${esc(m)}. Check your connection and that the SQL setup has been run, then <button class="underline font-bold" data-act="${a}">try again</button>.</div>`;
+const gate=(t)=>`<div class="max-w-sm mx-auto card mt-10 text-center"><h2 class="font-display text-3xl text-gold">${t}</h2><p class="text-sm text-ivory/60 mt-2">${S.session?'Your account does not have access to this screen.':'Log in with your staff account to continue.'}</p>${S.session?'':'<button class="btn-g mt-4" data-act="openAuth" data-m="login">Log in</button>'}</div>`;
+function renderAll(){renderNav();const r=route();for(const v of VIEWS)$('#v-'+v).hidden=v!==r;
+ ({home:renderHome,menu:renderMenuView,profile:renderProfile,waiter:renderWaiter,counter:renderCounter,admin:renderAdmin})[r]();
+ renderCartBar();renderStatus();if($('#dlg').open&&['table','bill'].includes(S.dlg?.t))renderDlg()}
+
+/* =====================================================================
+   5. CUSTOMER: HOME (DEALS), MENU, CART
+   Table is read from ?table=N in the QR link, so no scan is needed later.
+   ===================================================================== */
+function readTable(){const n=parseInt(new URLSearchParams(location.search).get('table')||ss('table'),10);if(n>=1&&n<=99){S.table=n;ss('table',String(n))}}
+const parseTable=t=>{const m=String(t).match(/[?&]table=(\d{1,3})/i);return m?+m[1]:null};
+const tableChip=()=>S.table?`<div class="inline-flex items-center gap-3 rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm"><span class="text-gold font-bold">Table ${S.table}</span><span class="text-ivory/60">confirmed</span><button class="underline" data-act="resetTable">Change</button></div>`:'';
+function renderHome(){
+ const deals=S.deals.filter(d=>d.active!==false);
+ const dl=S.mState==='loading'?'<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">'+'<div class="skel h-48 rounded-2xl"></div>'.repeat(3)+'</div>'
+  :S.mState==='error'?errCard(S.mErr,'retryMenu'):deals.length?`<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">${deals.map(d=>`<button data-act="openDeal" data-id="${d.id}" class="card text-left hover:border-gold transition"><div class="text-5xl">${esc(d.emoji||'🍽️')}</div><h3 class="font-display text-2xl mt-3">${esc(d.title)}</h3><p class="text-sm text-ivory/60 mt-1">${esc(d.description)}</p><div class="mt-4 text-gold font-bold">${money(d.price)}</div></button>`).join('')}</div>`:'<p class="text-ivory/60">No deals right now. Browse the full menu instead.</p>';
+ $('#v-home').innerHTML=`<h1 class="font-display text-5xl md:text-7xl font-bold leading-[1.02] max-w-3xl">Bhook lagi hai? Yeh raha aapka <span class="italic font-medium text-gold">thikana</span>.</h1>
+ <div class="mt-6 flex flex-wrap items-center gap-3"><a href="#menu" class="btn-g !px-6 !py-3">Menu</a><button class="btn !px-6 !py-3" data-act="openScan">Scan table QR</button>${tableChip()}</div>
+ <h2 class="font-display text-3xl mt-12 mb-4">Today’s deals</h2>${dl}`;
+}
+const CAT_IDX=c=>{const i=CFG.CATS.indexOf(c);return i<0?99:i};
+const ctl=k=>{const q=S.cart[k]||0;return q?`<div class="flex items-center gap-2"><button class="btn !px-3 !py-1" data-act="qty" data-k="${k}" data-d="-1" aria-label="Remove one">−</button><span class="w-5 text-center font-bold">${q}</span><button class="btn-g !px-3 !py-1" data-act="qty" data-k="${k}" data-d="1" aria-label="Add one">+</button></div>`:`<button class="btn-g" data-act="qty" data-k="${k}" data-d="1">Add</button>`};
+function renderMenuView(){
+ let body='';
+ if(S.mState==='loading')body='<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">'+'<div class="skel h-36 rounded-2xl"></div>'.repeat(6)+'</div>';
+ else if(S.mState==='error')body=errCard(S.mErr,'retryMenu');
+ else{const items=S.menu.filter(i=>i.available!==false),cats=[...new Set(items.map(i=>i.category))].sort((a,b)=>CAT_IDX(a)-CAT_IDX(b)||a.localeCompare(b));
+  body=!cats.length?'<p class="text-ivory/60">The menu is empty right now. Please check back soon.</p>':
+  `<div class="flex gap-2 overflow-x-auto pb-2 sticky top-[3.6rem] z-20 bg-obs-950/90 py-2">${cats.map((c,i)=>`<button class="btn whitespace-nowrap" data-act="jump" data-i="${i}">${esc(c)}</button>`).join('')}</div>`+
+  cats.map((c,i)=>`<h2 id="cat-${i}" class="font-display text-3xl mt-8 mb-3 scroll-mt-32">${esc(c)}</h2><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.filter(x=>x.category===c).map(x=>`<article class="card flex flex-col"><div class="flex justify-between gap-3"><h3 class="font-display text-2xl">${esc(x.name)}</h3><span class="text-3xl" aria-hidden="true">${esc(x.emoji||'🍽️')}</span></div><p class="text-sm text-ivory/60 flex-1 mt-1">${esc(x.description)}</p><div class="mt-4 flex items-center justify-between"><span class="text-gold font-bold">${money(x.price)}</span>${ctl('item:'+x.id)}</div></article>`).join('')}</div>`).join('')}
+ $('#v-menu').innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><h1 class="font-display text-5xl font-bold">Menu</h1>${tableChip()||'<span class="text-sm text-ivory/50">No table yet. You will scan your table QR when you confirm.</span>'}</div>${body}`;
+}
+function cartLines(){return Object.entries(S.cart).map(([k,q])=>{const [kind,id]=k.split(':'),m=(kind==='deal'?S.deals:S.menu).find(x=>String(x.id)===id);return m?{k,kind,id:m.id,name:m.name||m.title,price:Number(m.price),qty:q}:null}).filter(Boolean)}
+const cartTotal=L=>L.reduce((s,l)=>s+l.price*l.qty,0);
+function renderCartBar(){const L=cartLines(),n=L.reduce((s,l)=>s+l.qty,0),r=route();
+ $('#cartBar').innerHTML=n&&['home','menu'].includes(r)?`<button class="btn-g pointer-events-auto relative shadow-2xl !px-7 !py-3 text-base" data-act="openCart">Order · ${money(cartTotal(L))}<span class="absolute -top-2 -right-2 min-w-6 h-6 px-1 rounded-full bg-red-500 text-white text-xs font-bold grid place-items-center">${n}</span></button>`:''}
+
+/* =====================================================================
+   6. ORDER FLOW: confirm sheet → (scan table if unknown) → place → status
+   ===================================================================== */
+function saveDraft(){const f=$('#dlgBody form[data-form=order]');if(f)S.draft={name:f.elements.cname.value,comment:f.elements.comment.value}}
+function cartDlg(){const L=cartLines();
+ return `<div class="flex justify-between"><h2 class="font-display text-3xl text-gold">Confirm your order</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>
+ <ul class="mt-4 space-y-2">${L.map(l=>`<li class="flex items-center justify-between gap-3 card !p-3"><div><div class="font-bold">${esc(l.name)}</div><div class="text-xs text-ivory/60">${money(l.price)} each</div></div>${ctl(l.k)}</li>`).join('')||'<li class="text-ivory/60">Your order is empty.</li>'}</ul>
+ <form data-form="order" class="mt-4 space-y-3"><input class="inp" name="cname" required maxlength="40" placeholder="Your name" value="${esc(S.draft.name??ss('name')??S.profile?.full_name??'')}" autocomplete="given-name">
+ <textarea class="inp" name="comment" rows="2" maxlength="200" placeholder="Any request? (optional) e.g. No yellow cheese, white only please">${esc(S.draft.comment)}</textarea>
+ <p class="text-sm ${S.table?'text-gold':'text-ivory/60'}">${S.table?'Table '+S.table+' confirmed. Your order goes straight to the kitchen.':'Next step: scan the QR code on your table to confirm it.'}</p>
+ <div class="flex justify-between font-bold"><span>Total</span><span class="text-gold">${money(cartTotal(L))}</span></div><button class="btn-g w-full !py-3" ${L.length?'':'disabled'}>Confirm order</button></form>`}
+function scanDlg(){return `<div class="flex justify-between"><h2 class="font-display text-3xl text-gold">Confirm your table</h2><button class="btn" data-act="${S.pending?'backToCart':'closeDlg'}">${S.pending?'← Back':'✕'}</button></div>
+ <p class="mt-2 text-sm text-ivory/60">Scan the QR code on your table.${S.pending?' Your order is sent as soon as it is read.':''}</p>
+ <div class="mt-4 aspect-video rounded-2xl bg-obs-950 overflow-hidden relative"><video id="video" class="w-full h-full object-cover" playsinline muted></video><div id="scanMsg" class="absolute inset-0 grid place-items-center text-sm text-center p-4 text-ivory/70">Starting camera…</div></div><canvas id="scanCanvas" hidden></canvas>
+ <form data-form="manual" class="mt-4 flex gap-2"><input class="inp" name="n" type="number" min="1" max="${CFG.TABLES}" required placeholder="Camera not working? Type your table number"><button class="btn-g">Confirm</button></form>`}
+function dealDlg(id){const d=S.deals.find(x=>String(x.id)===String(id));if(!d)return'';
+ return `<div class="flex justify-between"><button class="btn" data-act="closeDlg">← Back</button></div><div class="max-w-lg mx-auto text-center mt-8"><div class="text-8xl">${esc(d.emoji||'🍽️')}</div><h2 class="font-display text-5xl text-gold mt-4">${esc(d.title)}</h2><p class="text-ivory/70 mt-3">${esc(d.description)}</p>
+ <ul class="card mt-6 text-left space-y-2">${(d.includes||[]).map(i=>`<li class="flex gap-2"><span class="text-gold">✓</span>${esc(i)}</li>`).join('')||'<li>Chef’s selection</li>'}</ul><div class="text-3xl font-bold text-gold mt-6">${money(d.price)}</div>
+ <button class="btn-g w-full !py-3 mt-6" data-act="orderDeal" data-id="${d.id}">Order this deal</button></div>`}
+function authDlg(){const su=S.authMode==='signup';
+ return `<div class="flex justify-between"><h2 class="font-display text-3xl text-gold">${su?'Create account':'Log in'}</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>
+ <button class="btn w-full mt-4 !py-3 flex items-center justify-center gap-2" data-act="google"><span class="font-bold">G</span> Continue with Google</button><p class="text-center text-xs text-ivory/40 my-3">or use email</p>
+ <form data-form="auth" class="space-y-3">${su?'<input class="inp" name="fname" required placeholder="Full name" autocomplete="name">':''}<input class="inp" name="email" type="email" required placeholder="Email" autocomplete="email"><input class="inp" name="password" type="password" required minlength="6" placeholder="Password" autocomplete="${su?'new-password':'current-password'}"><button class="btn-g w-full !py-3">${su?'Sign up':'Log in'}</button></form>
+ <button class="underline text-sm mt-4" data-act="swapAuth">${su?'I already have an account':'Create an account'}</button>`}
+function renderDlg(){const b=$('#dlgBody'),t=S.dlg?.t;
+ b.innerHTML=t==='cart'?cartDlg():t==='scan'?scanDlg():t==='deal'?dealDlg(S.dlg.id):t==='auth'?authDlg():t==='table'?tableModal(S.dlg.n):t==='bill'?billModal(S.dlg.n):t==='item'?itemForm(S.dlg.id):t==='dealf'?dealForm(S.dlg.id):''}
+function openDlg(d){stopCam();S.dlg=d;const el=$('#dlg');el.classList.toggle('fs',d.t==='deal');renderDlg();if(!el.open)el.showModal();if(d.t==='scan')startCam()}
+$('#dlg').addEventListener('close',()=>{stopCam();S.dlg=null});
+
+/* ---- QR scanner (BarcodeDetector, jsQR fallback) ---- */
+let stream=null,scanning=false;
+async function startCam(){const msg=$('#scanMsg');
+ if(!navigator.mediaDevices?.getUserMedia){msg.textContent='Camera is not available. Type your table number below.';return}
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#video');v.srcObject=stream;await v.play();msg.hidden=true;scanning=true;tick()}
+ catch(e){msg.textContent='Camera access was blocked. Allow it in your browser or type your table number below.'}}
+function stopCam(){scanning=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+async function tick(){if(!scanning||S.dlg?.t!=='scan')return;const v=$('#video');
+ if(v&&v.readyState>=2){let raw=null;
+  try{if('BarcodeDetector' in window){raw=(await new BarcodeDetector({formats:['qr_code']}).detect(v))[0]?.rawValue}
+   else if(window.jsQR){const c=$('#scanCanvas'),x=c.getContext('2d',{willReadFrequently:true});c.width=v.videoWidth;c.height=v.videoHeight;x.drawImage(v,0,0);raw=jsQR(x.getImageData(0,0,c.width,c.height).data,c.width,c.height)?.data}}catch(e){}
+  const n=raw&&parseTable(raw);if(n){return setTableConfirmed(n)}
+  if(raw){$('#scanMsg').hidden=false;$('#scanMsg').textContent='That is not a table QR code. Scan the one on your table.'}}
+ requestAnimationFrame(tick)}
+function setTableConfirmed(n){S.table=n;ss('table',String(n));stopCam();
+ if(S.pending){const m=$('#scanMsg');m.hidden=false;m.textContent='Table '+n+' confirmed. Sending your order…';doPlace(null)}
+ else{$('#dlg').close();toast('Table '+n+' confirmed');renderAll()}}
+async function doPlace(btn){const p=S.pending,L=cartLines();
+ const r=await run(btn,()=>API.placeOrder(S.table,p.name,L,p.comment));
+ if(r&&r!==true){ls('ref',JSON.stringify({id:r.order_id,token:r.order_token}));S.st={id:r.order_id,token:r.order_token};S.stData=null;S.stOpen=true;S.unread=false;S.cart={};S.pending=null;S.draft={};$('#dlg').close();renderAll();await pollStatus()}
+ else if(S.dlg?.t==='scan')openDlg({t:'cart'})}
+
+/* ---- order status: full screen ⇄ round bubble (top right) ---- */
+async function pollStatus(){if(!S.st)return;
+ try{const d=await API.getOrder(S.st.id,S.st.token);if(!d){clearOrder();return}
+  if(S.stData&&S.stData.status!==d.status&&!S.stOpen)S.unread=true;S.stData=d}catch(e){console.error(e)}renderStatus()}
+function clearOrder(){S.st=null;S.stData=null;S.stOpen=false;ls('ref',null);renderStatus()}
+function renderStatus(){const el=$('#status'),bub=$('#bubble');
+ if(!S.st){el.hidden=bub.hidden=true;return}
+ const d=S.stData,s=d?.status||'new';bub.hidden=S.stOpen;el.hidden=!S.stOpen;
+ bub.innerHTML=`<span class="text-2xl">${STATUS[s].e}</span>${S.unread?'<i class="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-obs-950"></i>':''}`;
+ if(!S.stOpen)return;const steps=['new','preparing','ready','served','paid'],at=steps.indexOf(s);
+ el.innerHTML=`<div class="max-w-lg mx-auto p-5"><div class="flex items-center justify-between"><button class="btn" data-act="stBack">← Back</button><span class="text-sm text-ivory/50">Order #${S.st.id}</span></div>
+ ${!d?'<div class="skel h-48 rounded-2xl mt-6"></div>':`<h2 class="font-display text-4xl text-gold mt-6">${STATUS[s].t}</h2><p class="text-ivory/60 mt-1">Table ${d.table_id} · ${esc(d.customer_name)}</p>
+ ${s==='cancelled'?'':`<ol class="mt-6 space-y-3">${steps.map((x,i)=>`<li class="flex items-center gap-3 ${i<=at?'':'opacity-35'}"><span class="w-8 h-8 rounded-full grid place-items-center ${i<=at?'bg-gold text-obs-950':'border border-ivory/30'}">${i<at?'✓':STATUS[x].e}</span>${STATUS[x].l}</li>`).join('')}</ol>`}
+ <div class="card mt-6"><ul class="space-y-1 text-sm">${(d.items||[]).map(i=>`<li class="flex justify-between"><span>${i.qty} × ${esc(i.name)}</span><span class="text-ivory/60">${money(i.qty*i.price)}</span></li>`).join('')}</ul>
+ ${d.comment?`<p class="mt-3 text-sm rounded-lg bg-gold/10 border border-gold/30 px-3 py-2">💬 ${esc(d.comment)}</p>`:''}<div class="mt-3 pt-2 border-t border-ivory/10 flex justify-between font-bold"><span>Total</span><span class="text-gold">${money(d.total)}</span></div></div>
+ ${s==='new'?`<button class="btn w-full mt-6 !border-red-500/60 text-red-300" data-act="cancelOrder">Cancel order</button><p class="text-xs text-ivory/50 mt-2 text-center">You can cancel until the waiter starts your order.</p>`:ACTIVE.includes(s)?'<p class="text-sm text-ivory/50 mt-6 text-center">Your order is being handled, so it can no longer be cancelled.</p>':''}`}</div>`}
+
+/* =====================================================================
+   7. PROFILE
+   ===================================================================== */
+function renderProfile(){const el=$('#v-profile');
+ if(!S.session){el.innerHTML=`<div class="max-w-md mx-auto card text-center"><h1 class="font-display text-4xl text-gold">Your profile</h1><p class="text-ivory/60 mt-2 text-sm">Log in to keep your order history. You can also order without an account.</p>
+  <button class="btn w-full mt-5 !py-3" data-act="google"><span class="font-bold">G</span> Continue with Google</button><div class="grid grid-cols-2 gap-3 mt-3"><button class="btn-g !py-3" data-act="openAuth" data-m="login">Log in</button><button class="btn !py-3" data-act="openAuth" data-m="signup">Sign up</button></div></div>`;return}
+ const p=S.profile||{};
+ el.innerHTML=`<div class="max-w-xl mx-auto"><div class="card"><div class="font-display text-3xl text-gold">${esc(p.full_name||S.session.user.email)}</div><div class="text-sm text-ivory/60">${esc(S.session.user.email)}</div>
+  <span class="inline-block mt-3 text-xs font-bold rounded-full px-3 py-1 bg-gold text-obs-950">${esc(S.role||'customer')}</span>
+  <div class="mt-4 flex flex-wrap gap-2">${isWaiter()?'<a class="btn" href="#waiter">Waiter screen</a>':''}${isCounter()?'<a class="btn" href="#counter">Counter</a>':''}${isAdmin()?'<a class="btn" href="#admin">Admin dashboard</a>':''}<button class="btn" data-act="logout">Log out</button></div></div>
+  ${isStaff()?'':`<h2 class="font-display text-3xl mt-8 mb-3">My orders</h2>${S.oState==='error'?errCard(S.oErr,'retryOrders'):S.myOrders.length?S.myOrders.map(o=>`<div class="card !p-3 mb-2 flex justify-between gap-3"><div><div class="font-bold">#${o.id} · Table ${o.table_id}</div><div class="text-xs text-ivory/60">${(o.items||[]).map(i=>i.qty+'× '+esc(i.name)).join(', ')}</div></div><div class="text-right"><div class="font-bold text-gold">${money(o.total)}</div><div class="text-xs" style="color:${STATUS[o.status].c}">${STATUS[o.status].l}</div></div></div>`).join(''):'<p class="text-ivory/60">No orders yet.</p>'}`}</div>`}
+
+/* =====================================================================
+   8. WAITER FLOOR
+   ===================================================================== */
+const byTable=n=>S.orders.filter(o=>o.table_id===n&&ACTIVE.includes(o.status));
+function renderWaiter(){const el=$('#v-waiter');if(!isWaiter()){el.innerHTML=gate('Waiter screen');return}
+ let grid='';const sk='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4';
+ if(S.oState==='loading')grid=`<div class="${sk}">`+'<div class="skel h-32 rounded-2xl"></div>'.repeat(CFG.TABLES)+'</div>';
+ else if(S.oState==='error')grid=errCard(S.oErr,'retryOrders');
+ else grid=`<div class="${sk}">`+Array.from({length:CFG.TABLES},(_,i)=>{const n=i+1,os=byTable(n),top=ACTIVE.find(s=>os.some(o=>o.status===s));
+  if(!os.length)return `<button data-act="openTable" data-n="${n}" class="h-32 rounded-2xl border border-ivory/10 bg-obs-900 text-ivory/50 hover:border-ivory/30"><div class="font-display text-4xl">${n}</div><div class="text-xs">Free</div></button>`;
+  const c=STATUS[top].c;return `<button data-act="openTable" data-n="${n}" class="h-32 rounded-2xl border-2 bg-obs-800 text-left p-4 ${top==='new'?'pulse-new':''}" style="border-color:${c}"><div class="flex justify-between"><span class="font-display text-4xl text-gold">${n}</span><span class="text-xs font-bold rounded-full px-2 py-0.5 h-fit" style="background:${c};color:#07070a">${STATUS[top].l}</span></div><div class="mt-2 text-sm">${os.length} order${os.length>1?'s':''} · ${money(os.reduce((s,o)=>s+Number(o.total),0))}</div></button>`}).join('')+'</div>';
+ el.innerHTML=`<div class="flex flex-wrap items-end justify-between gap-3 mb-6"><h1 class="font-display text-5xl font-bold">Floor</h1><div class="flex flex-wrap gap-3 text-xs">${ACTIVE.map(s=>`<span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full" style="background:${STATUS[s].c}"></i>${STATUS[s].l}</span>`).join('')}</div></div>${grid}`}
+function tableModal(n){const os=byTable(n).slice().reverse();
+ return `<div class="flex justify-between items-start"><h2 class="font-display text-4xl text-gold">Table ${n}</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>
+ ${os.length?os.map(o=>`<div class="card mt-4"><div class="flex flex-wrap justify-between gap-2"><div><div class="font-bold text-lg">${esc(o.customer_name||'Guest')}</div><div class="text-xs text-ivory/50">Order #${o.id} at ${tm(o.created_at)}</div></div><span class="text-xs font-bold rounded-full px-3 py-1 h-fit" style="background:${STATUS[o.status].c};color:#07070a">${STATUS[o.status].l}</span></div>
+ <ul class="mt-3 text-sm space-y-1">${(o.items||[]).map(i=>`<li class="flex justify-between"><span>${i.qty} × ${esc(i.name)}</span><span class="text-ivory/60">${money(i.qty*i.price)}</span></li>`).join('')}</ul>
+ ${o.comment?`<p class="mt-3 text-sm rounded-lg bg-gold/10 border border-gold/30 px-3 py-2">💬 ${esc(o.comment)}</p>`:''}
+ <div class="mt-3 flex justify-between font-bold border-t border-ivory/10 pt-2"><span>Total</span><span class="text-gold">${money(o.total)}</span></div>
+ <div class="mt-3 flex flex-wrap gap-2">${['preparing','ready','served'].map(s=>`<button class="btn ${o.status===s?'!border-gold text-gold':''}" data-act="status" data-id="${o.id}" data-s="${s}">${STATUS[s].l}</button>`).join('')}<button class="btn !border-red-500/50 text-red-300" data-act="status" data-id="${o.id}" data-s="cancelled">Cancel</button></div></div>`).join('')
+ +`<div class="mt-5 flex justify-between items-center"><div class="font-bold">Table total <span class="text-gold">${money(os.reduce((s,o)=>s+Number(o.total),0))}</span></div><span class="text-xs text-ivory/50">Payment is taken at the counter</span></div>`:'<p class="mt-6 text-ivory/60">No active orders. This table is free.</p>'}`}
+
+/* =====================================================================
+   9. ADMIN (menu CRUD · deals CRUD · all orders · table QR codes)
+   ===================================================================== */
+/* =====================================================================
+   8b. COUNTER (bill + payment). Table stays booked until it is paid.
+   ===================================================================== */
+const sumT=a=>a.reduce((s,o)=>s+Number(o.total),0),qtyT=a=>a.reduce((s,o)=>s+(o.items||[]).reduce((x,i)=>x+i.qty,0),0);
+function renderCounter(){const el=$('#v-counter');if(!isCounter()){el.innerHTML=gate('Counter');return}
+ const sk='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4';let grid='';
+ if(S.oState==='loading')grid=`<div class="${sk}">`+'<div class="skel h-32 rounded-2xl"></div>'.repeat(CFG.TABLES)+'</div>';
+ else if(S.oState==='error')grid=errCard(S.oErr,'retryOrders');
+ else grid=`<div class="${sk}">`+Array.from({length:CFG.TABLES},(_,i)=>{const n=i+1,os=byTable(n);
+  if(!os.length)return `<button data-act="openBill" data-n="${n}" class="h-32 rounded-2xl border-2 bg-obs-800 text-left p-4" style="border-color:#6fbf8b"><span class="font-display text-4xl" style="color:#6fbf8b">${n}</span><div class="mt-2 text-sm font-bold" style="color:#6fbf8b">Free</div></button>`;
+  const done=os.every(o=>o.status==='served');
+  return `<button data-act="openBill" data-n="${n}" class="h-32 rounded-2xl border-2 border-gold bg-obs-800 text-left p-4"><div class="flex justify-between"><span class="font-display text-4xl text-gold">${n}</span><span class="text-xs font-bold rounded-full px-2 py-0.5 h-fit bg-gold text-obs-950">${done?'Ready to pay':'Booked'}</span></div><div class="mt-2 text-sm">Bill ${money(sumT(os))}</div></button>`}).join('')+'</div>';
+ el.innerHTML=`<div class="flex flex-wrap items-end justify-between gap-3 mb-6"><h1 class="font-display text-5xl font-bold">Counter</h1><div class="flex gap-4 text-xs"><span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full" style="background:#6fbf8b"></i>Free</span><span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full bg-gold"></i>Booked until paid</span></div></div>${grid}`}
+function billModal(n){const os=byTable(n).slice().reverse(),del=os.filter(o=>o.status==='served'),pen=os.filter(o=>o.status!=='served');
+ return `<div class="flex justify-between items-start"><h2 class="font-display text-4xl text-gold">Table ${n} bill</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>`+
+ (!os.length?'<p class="mt-6" style="color:#6fbf8b">This table is free. Nothing to pay.</p>':
+ os.map(o=>`<div class="card mt-4"><div class="flex flex-wrap justify-between gap-2"><div><div class="font-bold text-lg">${esc(o.customer_name||'Guest')}</div><div class="text-xs text-ivory/50">Order #${o.id} at ${tm(o.created_at)}</div></div><span class="text-xs font-bold rounded-full px-3 py-1 h-fit" style="background:${o.status==='served'?'#6fbf8b':STATUS[o.status].c};color:#07070a">${o.status==='served'?'Delivered':'Not delivered · '+STATUS[o.status].l}</span></div>
+ <ul class="mt-3 text-sm space-y-1">${(o.items||[]).map(i=>`<li class="flex justify-between"><span>${i.qty} × ${esc(i.name)}</span><span class="text-ivory/60">${money(i.qty*i.price)}</span></li>`).join('')}</ul>
+ ${o.comment?`<p class="mt-2 text-xs text-gold">💬 ${esc(o.comment)}</p>`:''}<div class="mt-2 flex justify-between font-bold border-t border-ivory/10 pt-2"><span>Order total</span><span class="text-gold">${money(o.total)}</span></div></div>`).join('')+
+ `<div class="card mt-4 space-y-1 text-sm"><div class="flex justify-between"><span>Ordered</span><span>${qtyT(os)} items</span></div><div class="flex justify-between"><span>Delivered</span><span>${qtyT(del)} items · ${money(sumT(del))}</span></div>${pen.length?`<div class="flex justify-between text-red-300"><span>Not delivered yet</span><span>${qtyT(pen)} items · ${money(sumT(pen))}</span></div>`:''}<div class="flex justify-between font-bold text-lg border-t border-ivory/10 pt-2 mt-2"><span>Total bill</span><span class="text-gold">${money(sumT(os))}</span></div></div>
+ <button class="btn-g w-full !py-3 mt-4" data-act="payTable" data-n="${n}">Received ${money(sumT(os))} · Mark paid</button>`)}
+
+const opts=sel=>Array.from({length:CFG.TABLES},(_,i)=>`<option value="${i+1}" ${sel==i+1?'selected':''}>Table ${i+1}</option>`).join('');
+function renderAdmin(){const el=$('#v-admin');if(!isAdmin()){el.innerHTML=gate('Manager dashboard');return}
+ const tabs=[['menu','Menu items'],['deals','Deals'],['orders','All orders'],['qr','Table QR codes']],ld=S.mState==='loading'?'<div class="skel h-40 rounded-2xl"></div>':S.mState==='error'?errCard(S.mErr,'retryMenu'):'';let body='';
+ if(S.tab==='menu'){body=ld||`<div class="flex justify-between items-center mb-4"><span class="text-sm text-ivory/60">${S.menu.length} items</span><button class="btn-g" data-act="editItem" data-id="">Add item</button></div><div class="space-y-2">${S.menu.map(i=>`<div class="card !p-3 flex flex-wrap items-center gap-3"><span class="text-2xl">${esc(i.emoji||'🍽️')}</span><div class="flex-1 min-w-[10rem]"><div class="font-bold">${esc(i.name)} <span class="text-xs text-ivory/50">· ${esc(i.category)}</span></div><div class="text-sm text-gold">${money(i.price)}</div></div><button class="btn ${i.available?'':'!text-ivory/40'}" data-act="toggle" data-t="menu_items" data-f="available" data-id="${i.id}">${i.available?'Available':'Hidden'}</button><button class="btn" data-act="editItem" data-id="${i.id}">Edit</button><button class="btn !border-red-500/50 text-red-300" data-act="del" data-t="menu_items" data-id="${i.id}">Delete</button></div>`).join('')||'<p class="text-ivory/60">No menu items yet.</p>'}</div>`}
+ else if(S.tab==='deals'){body=ld||`<div class="flex justify-between items-center mb-4"><span class="text-sm text-ivory/60">${S.deals.length} deals</span><button class="btn-g" data-act="editDeal" data-id="">Add deal</button></div><div class="space-y-2">${S.deals.map(d=>`<div class="card !p-3 flex flex-wrap items-center gap-3"><span class="text-2xl">${esc(d.emoji||'🍽️')}</span><div class="flex-1 min-w-[10rem]"><div class="font-bold">${esc(d.title)}</div><div class="text-sm text-gold">${money(d.price)}</div></div><button class="btn ${d.active?'':'!text-ivory/40'}" data-act="toggle" data-t="deals" data-f="active" data-id="${d.id}">${d.active?'Live':'Hidden'}</button><button class="btn" data-act="editDeal" data-id="${d.id}">Edit</button><button class="btn !border-red-500/50 text-red-300" data-act="del" data-t="deals" data-id="${d.id}">Delete</button></div>`).join('')||'<p class="text-ivory/60">No deals yet.</p>'}</div>`}
+ else if(S.tab==='orders'){const L=S.orders.filter(o=>S.filter==='all'||o.status===S.filter);
+  body=S.oState==='loading'?'<div class="skel h-40 rounded-2xl"></div>':S.oState==='error'?errCard(S.oErr,'retryOrders'):`<select id="ofilter" class="inp !w-auto mb-4"><option value="all">All statuses</option>${Object.keys(STATUS).map(s=>`<option value="${s}" ${S.filter===s?'selected':''}>${STATUS[s].l}</option>`).join('')}</select><div class="space-y-2">${L.map(o=>`<div class="card !p-3 flex flex-wrap items-center gap-3"><div class="font-display text-3xl text-gold w-12">${o.table_id}</div><div class="flex-1 min-w-[10rem]"><div class="font-bold">${esc(o.customer_name||'Guest')} <span class="text-xs text-ivory/50">#${o.id} · ${tm(o.created_at)}</span></div><div class="text-xs text-ivory/60">${(o.items||[]).map(i=>i.qty+'× '+esc(i.name)).join(', ')}</div>${o.comment?`<div class="text-xs text-gold mt-1">💬 ${esc(o.comment)}</div>`:''}</div><div class="font-bold">${money(o.total)}</div><select class="inp !w-auto" data-sel="status" data-id="${o.id}">${Object.keys(STATUS).map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${STATUS[s].l}</option>`).join('')}</select></div>`).join('')||'<p class="text-ivory/60">No orders match this filter.</p>'}</div>`}
+ else{const url=location.href.split(/[?#]/)[0]+'?table='+S.qrTable;let svg='';try{const q=qrcode(0,'M');q.addData(url);q.make();svg=q.createSvgTag({cellSize:6,margin:0,scalable:true})}catch(e){svg='QR failed'}
+  body=`<div class="card max-w-md"><div class="flex items-center gap-3 noprint"><label for="qrSel">Table</label><select id="qrSel" class="inp !w-auto">${opts(S.qrTable)}</select><button class="btn-g" onclick="window.print()">Print</button></div><div class="mt-4 bg-ivory rounded-2xl p-4 w-56 mx-auto" role="img" aria-label="QR code for table ${S.qrTable}">${svg}</div><p class="text-center font-display text-3xl mt-3 text-gold">Table ${S.qrTable}</p><p class="text-xs text-ivory/50 break-all mt-2 text-center">${esc(url)}</p><p class="text-xs text-ivory/40 mt-2 text-center noprint">Host this page online first, then print the codes from there.</p></div>`}
+ el.innerHTML=`<h1 class="font-display text-5xl font-bold mb-6">Admin</h1><div class="flex flex-wrap gap-2 mb-6">${tabs.map(t=>`<button data-act="tab" data-t="${t[0]}" class="btn ${S.tab===t[0]?'!bg-gold !text-obs-950 font-bold':''}">${t[1]}</button>`).join('')}</div>${body}`}
+const fld=(n,ph,v,x='')=>`<input class="inp" name="${n}" placeholder="${ph}" value="${esc(v)}" ${x}>`;
+function itemForm(id){const it=S.menu.find(m=>String(m.id)===String(id))||{available:true};
+ return `<h2 class="font-display text-3xl text-gold">${it.id?'Edit item':'Add item'}</h2><form data-form="item" class="mt-4 grid gap-3"><input type="hidden" name="id" value="${it.id||''}">${fld('name','Name',it.name,'required')}<textarea class="inp" name="description" rows="2" placeholder="Description">${esc(it.description)}</textarea><div class="grid grid-cols-2 gap-3">${fld('price','Price',it.price,'type=number min=0 step=1 required')}${fld('emoji','Emoji',it.emoji)}</div>${fld('category','Category (e.g. Mains)',it.category,'required')}<label class="flex gap-2 items-center text-sm"><input type="checkbox" name="available" ${it.available!==false?'checked':''}> Show on customer menu</label><div class="flex gap-2 justify-end"><button type="button" class="btn" data-act="closeDlg">Cancel</button><button class="btn-g">Save item</button></div></form>`}
+function dealForm(id){const d=S.deals.find(m=>String(m.id)===String(id))||{active:true};
+ return `<h2 class="font-display text-3xl text-gold">${d.id?'Edit deal':'Add deal'}</h2><form data-form="deal" class="mt-4 grid gap-3"><input type="hidden" name="id" value="${d.id||''}">${fld('title','Deal title',d.title,'required')}<textarea class="inp" name="description" rows="2" placeholder="Short description">${esc(d.description)}</textarea>${fld('includes','What is included (comma separated)',(d.includes||[]).join(', '))}<div class="grid grid-cols-2 gap-3">${fld('price','Deal price',d.price,'type=number min=0 step=1 required')}${fld('emoji','Emoji',d.emoji)}</div><label class="flex gap-2 items-center text-sm"><input type="checkbox" name="active" ${d.active!==false?'checked':''}> Show on home screen</label><div class="flex gap-2 justify-end"><button type="button" class="btn" data-act="closeDlg">Cancel</button><button class="btn-g">Save deal</button></div></form>`}
+
+/* =====================================================================
+   10. EVENTS (delegated)
+   ===================================================================== */
+const rerenderQty=()=>{saveDraft();if($('#dlg').open&&S.dlg?.t==='cart'){renderDlg()}renderAll()};
+const ACT={
+ qty:b=>{const k=b.dataset.k;saveDraft();S.cart[k]=(S.cart[k]||0)+ +b.dataset.d;if(S.cart[k]<=0)delete S.cart[k];if($('#dlg').open&&S.dlg?.t==='cart')renderDlg();renderAll()},
+ jump:b=>document.getElementById('cat-'+b.dataset.i)?.scrollIntoView({behavior:'smooth'}),
+ openCart:()=>openDlg({t:'cart'}),closeDlg:()=>$('#dlg').close(),backToCart:()=>openDlg({t:'cart'}),
+ openScan:()=>{S.pending=null;openDlg({t:'scan'})},
+ resetTable:()=>{S.table=null;ss('table','');renderAll()},
+ openDeal:b=>openDlg({t:'deal',id:b.dataset.id}),
+ orderDeal:b=>{const k='deal:'+b.dataset.id;S.cart[k]=(S.cart[k]||0)+1;openDlg({t:'cart'});renderAll()},
+ retryMenu:loadMenu,retryOrders:loadOrders,
+ openAuth:b=>{S.authMode=b.dataset.m;openDlg({t:'auth'})},swapAuth:()=>{S.authMode=S.authMode==='login'?'signup':'login';renderDlg()},
+ google:b=>run(b,async()=>{ss('intent','1');await API.google()}),
+ logout:b=>run(b,()=>API.signOut(),'Logged out'),
+ stOpen:()=>{S.stOpen=true;S.unread=false;renderStatus()},
+ stBack:()=>{S.stOpen=false;if(['paid','cancelled'].includes(S.stData?.status))clearOrder();else renderStatus()},
+ cancelOrder:b=>{if(confirm('Cancel this order?'))return run(b,async()=>{await API.cancelOrder(S.st.id,S.st.token);await pollStatus()},'Order cancelled').then(pollStatus)},
+ openTable:b=>openDlg({t:'table',n:+b.dataset.n}),
+ status:b=>run(b,async()=>{await API.setStatus(+b.dataset.id,b.dataset.s);await loadOrders()}),
+ openBill:b=>openDlg({t:'bill',n:+b.dataset.n}),
+ payTable:b=>{const n=+b.dataset.n;if(byTable(n).some(o=>o.status!=='served')&&!confirm('Some orders are not delivered yet. Take payment and free the table anyway?'))return;return run(b,async()=>{await API.closeTable(n);await loadOrders();$('#dlg').close()},'Paid. Table is free again')},
+ tab:b=>{S.tab=b.dataset.t;renderAll()},
+ editItem:b=>openDlg({t:'item',id:b.dataset.id}),editDeal:b=>openDlg({t:'dealf',id:b.dataset.id}),
+ toggle:b=>{const {t,f,id}=b.dataset,r=(t==='deals'?S.deals:S.menu).find(x=>String(x.id)===id);return run(b,async()=>{await API.saveRow(t,{id:r.id,[f]:!r[f]});await refreshMenu()})},
+ del:b=>{if(confirm('Delete this entry?'))return run(b,async()=>{await API.delRow(b.dataset.t,b.dataset.id);await refreshMenu()},'Deleted')}
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b)ACT[b.dataset.act]?.(b)});
+document.addEventListener('change',e=>{const t=e.target;
+ if(t.dataset.sel==='status')run(null,async()=>{await API.setStatus(+t.dataset.id,t.value);await loadOrders()},'Status updated');
+ if(t.id==='ofilter'){S.filter=t.value;renderAll()}if(t.id==='qrSel'){S.qrTable=+t.value;renderAll()}});
+document.addEventListener('submit',async e=>{const f=e.target,k=f.dataset.form;if(!k)return;e.preventDefault();const btn=f.querySelector('button:not([type=button])'),d=new FormData(f);
+ if(k==='order'){if(!cartLines().length)return;S.pending={name:d.get('cname').trim(),comment:d.get('comment').trim()};ss('name',S.pending.name);return S.table?doPlace(btn):openDlg({t:'scan'})}
+ if(k==='manual'){const n=+d.get('n');return n>=1&&n<=CFG.TABLES?setTableConfirmed(n):toast('Enter a table number from 1 to '+CFG.TABLES,true)}
+ if(k==='auth'){const em=d.get('email').trim(),pw=d.get('password');ss('intent','1');
+  const r=await run(btn,()=>S.authMode==='signup'?API.signUp(em,pw,d.get('fname').trim()):API.signIn(em,pw));
+  if(r&&S.authMode==='signup'&&r!==true&&!r.session){ss('intent','');toast('Check your email to confirm your account, then log in.');$('#dlg').close()}
+  else if(r)$('#dlg').close();else ss('intent','')}
+ if(k==='item')await run(btn,async()=>{const id=d.get('id');await API.saveRow('menu_items',{...(id?{id}:{}),name:d.get('name').trim(),description:d.get('description').trim(),price:Number(d.get('price')),emoji:d.get('emoji').trim()||null,category:d.get('category').trim(),available:d.has('available')});$('#dlg').close();await refreshMenu()},'Item saved');
+ if(k==='deal')await run(btn,async()=>{const id=d.get('id');await API.saveRow('deals',{...(id?{id}:{}),title:d.get('title').trim(),description:d.get('description').trim(),includes:d.get('includes').split(',').map(s=>s.trim()).filter(Boolean),price:Number(d.get('price')),emoji:d.get('emoji').trim()||null,active:d.has('active')});$('#dlg').close();await refreshMenu()},'Deal saved')});
+window.addEventListener('hashchange',renderAll);
+
+/* =====================================================================
+   11. BOOT: session → role → role-based screen
+   ===================================================================== */
+async function onSession(session){S.session=session;S.profile=null;S.role=null;S.orders=[];S.myOrders=[];
+ if(session){try{S.profile=await API.fetchProfile();S.role=S.profile?.role||'customer'}catch(e){console.error(e);S.role='customer'}}
+ await loadMenu();subscribeLive();if(session)loadOrders();
+ if(session&&ss('intent')){ss('intent','');location.hash=isAdmin()?'admin':isWaiter()?'waiter':isCounter()?'counter':'profile'}}
+(function init(){
+ readTable();renderAll();
+ try{const r=JSON.parse(ls('ref')||'null');if(r?.id&&r?.token){S.st=r;S.stOpen=false;pollStatus()}}catch(e){}
+ setInterval(pollStatus,4000);
+ sb.auth.onAuthStateChange((_e,session)=>{setTimeout(()=>onSession(session),0)});
+})();
+</script>
+</body>
+</html>
