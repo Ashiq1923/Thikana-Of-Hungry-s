@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" style="color-scheme:dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thikhana of Hunngrys</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{obs:{950:'#07070a',900:'#0e0e13',800:'#16161d',700:'#22222c'},gold:{DEFAULT:'#d4af37',soft:'#ecd48a',deep:'#9a7b1c'},ivory:'#f3eee2'},fontFamily:{display:['Cormorant Garamond','Georgia','serif'],sans:['Manrope','system-ui','sans-serif']}}}}
+</script>
+<style type="text/tailwindcss">
+@layer components{
+ .btn{@apply rounded-full border border-ivory/20 px-4 py-2 text-sm hover:border-gold transition disabled:opacity-50}
+ .btn-g{@apply rounded-full bg-gold text-obs-950 font-bold px-5 py-2 text-sm hover:bg-gold-soft transition disabled:opacity-50}
+ .card{@apply rounded-2xl bg-obs-800 border border-ivory/10 p-5}
+ .inp{@apply w-full bg-obs-950 border border-ivory/20 rounded-xl px-4 py-2.5 focus:border-gold outline-none}
+}
+</style>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:5rem}
+body{background:radial-gradient(70% 40% at 50% -10%,rgba(212,175,55,.12),transparent),#07070a}
+.glass{background:rgba(14,14,19,.7);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(212,175,55,.25)}
+.skel{background:linear-gradient(90deg,#16161d 25%,#22222c 50%,#16161d 75%);background-size:200% 100%;animation:sk 1.3s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@keyframes pl{50%{box-shadow:0 0 0 6px rgba(212,175,55,.0),0 0 28px rgba(212,175,55,.45)}}
+.pulse-new{animation:pl 1.8s infinite}
+@media(prefers-reduced-motion:reduce){.skel,.pulse-new{animation:none}}
+:focus-visible{outline:2px solid #d4af37;outline-offset:2px}
+dialog{max-height:90vh}dialog::backdrop{background:rgba(0,0,0,.7)}
+@media print{header,nav,#cartBar,.noprint{display:none!important}}
+</style>
+</head>
+<body class="font-sans antialiased bg-obs-950 text-ivory">
+<header class="sticky top-0 z-40 glass">
+ <div class="max-w-6xl mx-auto flex items-center justify-between gap-3 px-4 py-3">
+  <a href="#menu" class="font-display text-2xl font-bold text-gold">Thikhana of Hunngrys</a>
+  <nav id="nav" class="flex items-center gap-1 text-sm" aria-label="Main"></nav>
+ </div>
+</header>
+<main class="max-w-6xl mx-auto px-4 py-8 pb-28">
+ <section id="v-menu"></section>
+ <section id="v-waiter" hidden></section>
+ <section id="v-admin" hidden></section>
+</main>
+<div id="cartBar" class="fixed bottom-4 inset-x-0 z-30 flex justify-center pointer-events-none"></div>
+<dialog id="dlg" class="rounded-3xl bg-obs-900 text-ivory border border-gold/30 p-0 w-[94%] max-w-2xl overflow-y-auto"><div id="dlgBody" class="p-6"></div></dialog>
+<div id="toasts" class="fixed top-16 right-4 z-50 space-y-2" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   1. CONFIG  (replace with your own project values if needed)
+   Required SQL (run once in Supabase → SQL Editor) is in the chat reply:
+   adds orders.customer_name, widens statuses, and adds staff policies.
+   ===================================================================== */
+const CFG={
+ SUPABASE_URL:'https://azsqutqlrbqhdknfrqva.supabase.co',
+ SUPABASE_ANON_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6c3F1dHFscmJxaGRrbmZycXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4MDk2ODcsImV4cCI6MjEwOTM4NTY4N30.mpQmgjXwVXf9HD6r9by0dXwnen6d-h_SgIj1TW3h0po',
+ TABLES:12, CUR:'Rs '
+};
+const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
+
+/* =====================================================================
+   2. SMALL UTILITIES + STATE
+   ===================================================================== */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>CFG.CUR+Math.round(Number(n)||0).toLocaleString('en-PK');
+const tm=d=>new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+const STATUS={new:{l:'New',c:'#d4af37'},preparing:{l:'Preparing',c:'#e08a3c'},ready:{l:'Ready',c:'#6fbf8b'},served:{l:'Served',c:'#8aa4d6'},paid:{l:'Paid',c:'#8a8a94'},cancelled:{l:'Cancelled',c:'#c25b5b'}};
+const ACTIVE=['new','preparing','ready','served'];
+const S={menu:[],mState:'loading',mErr:'',cat:'All',cart:{},table:null,session:null,orders:[],oState:'idle',oErr:'',tab:'menu',filter:'all',dlg:null,qrTable:1,editId:null};
+function ss(k,v){try{if(v===undefined)return sessionStorage.getItem(k);sessionStorage.setItem(k,v)}catch(e){return null}}
+function toast(msg,bad){const t=document.createElement('div');t.className='rounded-xl px-4 py-2 text-sm border '+(bad?'bg-red-950 border-red-500/50 text-red-200':'bg-obs-800 border-gold/40');t.textContent=msg;$('#toasts').appendChild(t);setTimeout(()=>t.remove(),4000)}
+/* Runs an async action with a disabled/“working” button and uniform error toast. */
+async function run(btn,fn,ok){const old=btn?.textContent;if(btn){btn.disabled=true;btn.textContent='Working…'}
+ try{const r=await fn();if(ok)toast(ok);return r}catch(e){console.error(e);toast(e.message||'Something went wrong. Try again.',true)}
+ finally{if(btn){btn.disabled=false;btn.textContent=old}}}
+
+/* =====================================================================
+   3. SUPABASE HELPERS (all async/await, all throw on error)
+   ===================================================================== */
+const API={
+ async signIn(email,password){const {data,error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;return data.session},
+ async signOut(){const {error}=await sb.auth.signOut();if(error)throw error},
+ async fetchMenu(includeHidden){let q=sb.from('menu_items').select('*').order('category').order('name');
+  if(!includeHidden)q=q.eq('available',true);const {data,error}=await q;if(error)throw error;return data||[]},
+ async saveItem(it){const {id,...f}=it;const {error}=id?await sb.from('menu_items').update(f).eq('id',id):await sb.from('menu_items').insert(f);if(error)throw error},
+ async deleteItem(id){const {error}=await sb.from('menu_items').delete().eq('id',id);if(error)throw error},
+ async insertOrder(o){const {error}=await sb.from('orders').insert(o);if(error)throw error},
+ async fetchOrders(){const {data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;return data||[]},
+ async setStatus(id,status){const {error}=await sb.from('orders').update({status}).eq('id',id);if(error)throw error},
+ async closeTable(n){const {error}=await sb.from('orders').update({status:'paid'}).eq('table_id',n).in('status',ACTIVE);if(error)throw error}
+};
+async function loadMenu(){S.mState='loading';renderAll();
+ try{S.menu=await API.fetchMenu(!!S.session);S.mState='ready'}catch(e){console.error(e);S.mState='error';S.mErr=e.message}renderAll()}
+async function loadOrders(){if(!S.session)return;S.oState='loading';renderAll();
+ try{S.orders=await API.fetchOrders();S.oState='ready'}catch(e){console.error(e);S.oState='error';S.oErr=e.message}renderAll()}
+let chan=null;
+function subscribeLive(){ // Realtime: staff get new/updated orders instantly; everyone gets menu changes.
+ if(chan)return;
+ chan=sb.channel('live')
+  .on('postgres_changes',{event:'*',schema:'public',table:'orders'},async()=>{if(!S.session)return;try{S.orders=await API.fetchOrders();S.oState='ready';renderAll()}catch(e){console.error(e)}})
+  .on('postgres_changes',{event:'*',schema:'public',table:'menu_items'},async()=>{try{S.menu=await API.fetchMenu(!!S.session);renderAll()}catch(e){console.error(e)}})
+  .subscribe(st=>{if(st==='CHANNEL_ERROR')console.warn('Realtime unavailable')});
+}
+
+/* =====================================================================
+   4. ROUTING + NAV
+   ===================================================================== */
+function route(){return ['menu','waiter','admin'].includes(location.hash.slice(1))?location.hash.slice(1):'menu'}
+function renderNav(){
+ const r=route(),l=(h,t)=>`<a href="#${h}" class="px-3 py-1.5 rounded-full ${r===h?'bg-gold text-obs-950 font-bold':'hover:text-gold'}">${t}</a>`;
+ $('#nav').innerHTML=l('menu','Menu')+l('waiter','Waiter')+l('admin','Admin')+(S.session?`<button class="btn ml-2" data-act="logout">Log out</button>`:'');
+}
+function loginCard(title){return `<div class="max-w-sm mx-auto card mt-10"><h2 class="font-display text-3xl text-gold">${title}</h2>
+ <p class="text-sm text-ivory/60 mt-1">Staff only. Log in with the account your manager created.</p>
+ <form data-form="login" class="mt-5 space-y-3"><input class="inp" name="email" type="email" required placeholder="Email" autocomplete="email">
+ <input class="inp" name="password" type="password" required placeholder="Password" autocomplete="current-password"><button class="btn-g w-full">Log in</button></form></div>`}
+function errCard(msg,act){return `<div class="rounded-2xl border border-red-500/40 bg-red-500/10 p-5">Could not load data: ${esc(msg)}. Check your connection and that the SQL setup has been run, then <button class="underline font-bold" data-act="${act}">try again</button>.</div>`}
+function renderAll(){
+ renderNav();const r=route();
+ for(const v of ['menu','waiter','admin'])$('#v-'+v).hidden=v!==r;
+ if(r==='menu')renderCustomer();if(r==='waiter')renderWaiter();if(r==='admin')renderAdmin();
+ renderCartBar();if($('#dlg').open)renderDlg();
+}
+
+/* =====================================================================
+   5. CUSTOMER QR FLOW  (table id comes from  ?table=5  in the URL)
+   ===================================================================== */
+function readTable(){const n=parseInt(new URLSearchParams(location.search).get('table')||ss('table'),10);
+ if(n>=1&&n<=CFG.TABLES){S.table=n;ss('table',String(n))}}
+const opts=(sel)=>Array.from({length:CFG.TABLES},(_,i)=>`<option value="${i+1}" ${sel==i+1?'selected':''}>Table ${i+1}</option>`).join('');
+function renderCustomer(){
+ const el=$('#v-menu');
+ const banner=S.table?`<div class="inline-flex items-center gap-3 rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm"><span class="text-gold font-bold">Table ${S.table}</span><span class="text-ivory/60">Your order goes to this table</span><button class="underline" data-act="resetTable">Change</button></div>`
+ :`<div class="card flex flex-wrap items-center gap-3"><span class="text-sm text-ivory/70">Scan the QR code on your table, or pick your table to simulate a scan:</span>
+   <select id="simTable" class="inp !w-auto">${opts(0)}</select><button class="btn-g" data-act="simScan">Set table</button></div>`;
+ let body='';
+ if(S.mState==='loading')body='<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">'+'<div class="skel h-36 rounded-2xl"></div>'.repeat(6)+'</div>';
+ else if(S.mState==='error')body=errCard(S.mErr,'retryMenu');
+ else{
+  const items=S.menu.filter(i=>i.available!==false),cats=['All',...new Set(items.map(i=>i.category))],shown=items.filter(i=>S.cat==='All'||i.category===S.cat);
+  body=`<div role="tablist" class="flex flex-wrap gap-2 mt-6">${cats.map(c=>`<button role="tab" aria-selected="${c===S.cat}" data-act="cat" data-c="${esc(c)}" class="btn ${c===S.cat?'!bg-gold !text-obs-950 font-bold':''}">${esc(c)}</button>`).join('')}</div>
+  <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">${shown.length?shown.map(i=>`<article class="card flex flex-col"><div class="flex justify-between gap-3"><h3 class="font-display text-2xl">${esc(i.name)}</h3><span class="text-3xl" aria-hidden="true">${esc(i.emoji||'🍽️')}</span></div>
+   <p class="text-sm text-ivory/60 flex-1 mt-1">${esc(i.description)}</p><div class="mt-4 flex items-center justify-between"><span class="text-gold font-bold">${money(i.price)}</span><button class="btn-g" data-act="add" data-id="${i.id}">Add</button></div></article>`).join(''):'<p class="text-ivory/60">Nothing available here right now. Try another category.</p>'}</div>`;
+ }
+ el.innerHTML=`<h1 class="font-display text-5xl md:text-6xl font-bold leading-tight max-w-2xl">Bhook lagi hai? Order straight from your table.</h1><div class="mt-6">${banner}</div>${body}`;
+}
+const cartLines=()=>Object.entries(S.cart).map(([id,q])=>{const m=S.menu.find(x=>String(x.id)===id);return m?{id:m.id,name:m.name,price:Number(m.price),qty:q}:null}).filter(Boolean);
+function renderCartBar(){const L=cartLines(),n=L.reduce((s,l)=>s+l.qty,0);
+ $('#cartBar').innerHTML=n&&route()==='menu'?`<button class="btn-g pointer-events-auto shadow-2xl !px-6 !py-3" data-act="openCart">View order · ${n} item${n>1?'s':''} · ${money(L.reduce((s,l)=>s+l.price*l.qty,0))}</button>`:'';}
+
+/* =====================================================================
+   6. WAITER FLOOR  (table boxes + order modal)
+   ===================================================================== */
+const byTable=n=>S.orders.filter(o=>o.table_id===n&&ACTIVE.includes(o.status));
+function renderWaiter(){
+ const el=$('#v-waiter');
+ if(!S.session){el.innerHTML=loginCard('Waiter login');return}
+ let grid='';
+ if(S.oState==='loading')grid='<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">'+'<div class="skel h-32 rounded-2xl"></div>'.repeat(CFG.TABLES)+'</div>';
+ else if(S.oState==='error')grid=errCard(S.oErr,'retryOrders');
+ else grid='<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">'+Array.from({length:CFG.TABLES},(_,i)=>{
+  const n=i+1,os=byTable(n),top=['new','preparing','ready','served'].find(s=>os.some(o=>o.status===s));
+  if(!os.length)return `<button data-act="openTable" data-n="${n}" class="h-32 rounded-2xl border border-ivory/10 bg-obs-900 text-ivory/50 hover:border-ivory/30"><div class="font-display text-4xl">${n}</div><div class="text-xs">Free</div></button>`;
+  const c=STATUS[top].c;
+  return `<button data-act="openTable" data-n="${n}" class="h-32 rounded-2xl border-2 bg-obs-800 text-left p-4 ${top==='new'?'pulse-new':''}" style="border-color:${c}"><div class="flex justify-between"><span class="font-display text-4xl text-gold">${n}</span><span class="text-xs font-bold rounded-full px-2 py-0.5 h-fit" style="background:${c};color:#07070a">${STATUS[top].l}</span></div>
+  <div class="mt-2 text-sm">${os.length} order${os.length>1?'s':''} · ${money(os.reduce((s,o)=>s+Number(o.total),0))}</div></button>`}).join('')+'</div>';
+ el.innerHTML=`<div class="flex flex-wrap items-end justify-between gap-3 mb-6"><h1 class="font-display text-5xl font-bold">Floor</h1>
+  <div class="flex flex-wrap gap-3 text-xs">${ACTIVE.map(s=>`<span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full" style="background:${STATUS[s].c}"></i>${STATUS[s].l}</span>`).join('')}</div></div>${grid}`;
+}
+function tableModal(n){const os=byTable(n).slice().reverse();
+ return `<div class="flex justify-between items-start"><h2 class="font-display text-4xl text-gold">Table ${n}</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>
+ ${os.length?os.map(o=>`<div class="card mt-4"><div class="flex flex-wrap justify-between gap-2"><div><div class="font-bold text-lg">${esc(o.customer_name||'Guest')}</div><div class="text-xs text-ivory/50">Order #${o.id} at ${tm(o.created_at)}</div></div>
+  <span class="text-xs font-bold rounded-full px-3 py-1 h-fit" style="background:${STATUS[o.status].c};color:#07070a">${STATUS[o.status].l}</span></div>
+  <ul class="mt-3 text-sm space-y-1">${(o.items||[]).map(i=>`<li class="flex justify-between"><span>${i.qty} × ${esc(i.name)}</span><span class="text-ivory/60">${money(i.qty*i.price)}</span></li>`).join('')}</ul>
+  <div class="mt-3 flex justify-between font-bold border-t border-ivory/10 pt-2"><span>Total</span><span class="text-gold">${money(o.total)}</span></div>
+  <div class="mt-3 flex flex-wrap gap-2">${['preparing','ready','served'].map(s=>`<button class="btn ${o.status===s?'!border-gold text-gold':''}" data-act="status" data-id="${o.id}" data-s="${s}">${STATUS[s].l}</button>`).join('')}
+  <button class="btn-g" data-act="status" data-id="${o.id}" data-s="paid">Paid</button><button class="btn !border-red-500/50 text-red-300" data-act="status" data-id="${o.id}" data-s="cancelled">Cancel</button></div></div>`).join('')
+ +`<div class="mt-5 flex justify-between items-center"><div class="font-bold">Table total <span class="text-gold">${money(os.reduce((s,o)=>s+Number(o.total),0))}</span></div><button class="btn-g" data-act="closeTable" data-n="${n}">Mark all paid &amp; free table</button></div>`
+ :'<p class="mt-6 text-ivory/60">No active orders. This table is free.</p>'}`}
+
+/* =====================================================================
+   7. ADMIN DASHBOARD  (menu CRUD · all orders · table QR codes)
+   ===================================================================== */
+function renderAdmin(){
+ const el=$('#v-admin');
+ if(!S.session){el.innerHTML=loginCard('Manager login');return}
+ const tabs=[['menu','Menu items'],['orders','All orders'],['qr','Table QR codes']];
+ let body='';
+ if(S.tab==='menu'){
+  body=S.mState==='loading'?'<div class="skel h-40 rounded-2xl"></div>':S.mState==='error'?errCard(S.mErr,'retryMenu'):
+  `<div class="flex justify-between items-center mb-4"><span class="text-sm text-ivory/60">${S.menu.length} items</span><button class="btn-g" data-act="editItem" data-id="">Add item</button></div>
+   <div class="space-y-2">${S.menu.map(i=>`<div class="card !p-3 flex flex-wrap items-center gap-3"><span class="text-2xl">${esc(i.emoji||'🍽️')}</span><div class="flex-1 min-w-[10rem]"><div class="font-bold">${esc(i.name)} <span class="text-xs text-ivory/50">· ${esc(i.category)}</span></div><div class="text-sm text-gold">${money(i.price)}</div></div>
+   <button class="btn ${i.available?'':'!text-ivory/40'}" data-act="toggleItem" data-id="${i.id}">${i.available?'Available':'Hidden'}</button><button class="btn" data-act="editItem" data-id="${i.id}">Edit</button><button class="btn !border-red-500/50 text-red-300" data-act="delItem" data-id="${i.id}">Delete</button></div>`).join('')||'<p class="text-ivory/60">No menu items yet. Add your first one.</p>'}</div>`;
+ }else if(S.tab==='orders'){
+  const L=S.orders.filter(o=>S.filter==='all'||o.status===S.filter);
+  body=S.oState==='loading'?'<div class="skel h-40 rounded-2xl"></div>':S.oState==='error'?errCard(S.oErr,'retryOrders'):
+  `<select id="ofilter" class="inp !w-auto mb-4"><option value="all">All statuses</option>${Object.keys(STATUS).map(s=>`<option value="${s}" ${S.filter===s?'selected':''}>${STATUS[s].l}</option>`).join('')}</select>
+   <div class="space-y-2">${L.map(o=>`<div class="card !p-3 flex flex-wrap items-center gap-3"><div class="font-display text-3xl text-gold w-12">${o.table_id}</div><div class="flex-1 min-w-[10rem]"><div class="font-bold">${esc(o.customer_name||'Guest')} <span class="text-xs text-ivory/50">#${o.id} · ${tm(o.created_at)}</span></div>
+   <div class="text-xs text-ivory/60">${(o.items||[]).map(i=>i.qty+'× '+esc(i.name)).join(', ')}</div></div><div class="font-bold">${money(o.total)}</div>
+   <select class="inp !w-auto" data-act="statusSel" data-id="${o.id}">${Object.keys(STATUS).map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${STATUS[s].l}</option>`).join('')}</select></div>`).join('')||'<p class="text-ivory/60">No orders match this filter.</p>'}</div>`;
+ }else{
+  const url=location.href.split(/[?#]/)[0]+'?table='+S.qrTable;let svg='';
+  try{const q=qrcode(0,'M');q.addData(url);q.make();svg=q.createSvgTag({cellSize:6,margin:0,scalable:true})}catch(e){svg='QR failed'}
+  body=`<div class="card max-w-md"><div class="flex items-center gap-3 noprint"><label for="qrSel">Table</label><select id="qrSel" class="inp !w-auto">${opts(S.qrTable)}</select><button class="btn-g" onclick="window.print()">Print</button></div>
+   <div class="mt-4 bg-ivory rounded-2xl p-4 w-56 mx-auto" role="img" aria-label="QR code for table ${S.qrTable}">${svg}</div><p class="text-center font-display text-3xl mt-3 text-gold">Table ${S.qrTable}</p><p class="text-xs text-ivory/50 break-all mt-2 text-center">${esc(url)}</p></div>`;
+ }
+ el.innerHTML=`<h1 class="font-display text-5xl font-bold mb-6">Admin</h1><div class="flex flex-wrap gap-2 mb-6">${tabs.map(t=>`<button data-act="tab" data-t="${t[0]}" class="btn ${S.tab===t[0]?'!bg-gold !text-obs-950 font-bold':''}">${t[1]}</button>`).join('')}</div>${body}`;
+}
+function itemForm(id){const it=S.menu.find(m=>String(m.id)===String(id))||{available:true};
+ return `<h2 class="font-display text-3xl text-gold">${it.id?'Edit item':'Add item'}</h2><form data-form="item" class="mt-4 grid gap-3"><input type="hidden" name="id" value="${it.id||''}">
+ <input class="inp" name="name" required placeholder="Name" value="${esc(it.name)}"><textarea class="inp" name="description" rows="2" placeholder="Description">${esc(it.description)}</textarea>
+ <div class="grid grid-cols-2 gap-3"><input class="inp" name="price" type="number" min="0" step="1" required placeholder="Price" value="${it.price??''}"><input class="inp" name="emoji" placeholder="Emoji" value="${esc(it.emoji)}"></div>
+ <input class="inp" name="category" required placeholder="Category (e.g. Mains)" value="${esc(it.category)}"><label class="flex gap-2 items-center text-sm"><input type="checkbox" name="available" ${it.available!==false?'checked':''}> Show on customer menu</label>
+ <div class="flex gap-2 justify-end"><button type="button" class="btn" data-act="closeDlg">Cancel</button><button class="btn-g">Save item</button></div></form>`}
+
+/* =====================================================================
+   8. DIALOG + CART
+   ===================================================================== */
+function renderDlg(){const b=$('#dlgBody');
+ if(S.dlg?.t==='table')b.innerHTML=tableModal(S.dlg.n);
+ else if(S.dlg?.t==='item'&&!b.querySelector('form'))b.innerHTML=itemForm(S.dlg.id);
+ else if(S.dlg?.t==='cart'){const L=cartLines();
+  b.innerHTML=`<div class="flex justify-between"><h2 class="font-display text-3xl text-gold">Your order</h2><button class="btn" data-act="closeDlg" aria-label="Close">✕</button></div>
+  <ul class="mt-4 space-y-2">${L.map(l=>`<li class="flex items-center justify-between gap-3 card !p-3"><div><div class="font-bold">${esc(l.name)}</div><div class="text-xs text-ivory/60">${money(l.price)} each</div></div><div class="flex items-center gap-2"><button class="btn !px-3" data-act="qty" data-id="${l.id}" data-d="-1" aria-label="Remove one">−</button><span>${l.qty}</span><button class="btn !px-3" data-act="qty" data-id="${l.id}" data-d="1" aria-label="Add one">+</button></div></li>`).join('')||'<li class="text-ivory/60">Your order is empty.</li>'}</ul>
+  <form data-form="order" class="mt-4 space-y-3"><input class="inp" name="name" required maxlength="40" placeholder="Your name" value="${esc(ss('name')||'')}" autocomplete="given-name">
+  ${S.table?`<p class="text-sm text-sage text-gold">Sending to table ${S.table}</p>`:`<select class="inp" name="table" required><option value="">Choose your table</option>${opts(0)}</select>`}
+  <div class="flex justify-between font-bold"><span>Total</span><span class="text-gold">${money(L.reduce((s,l)=>s+l.price*l.qty,0))}</span></div><button class="btn-g w-full" ${L.length?'':'disabled'}>Send order to kitchen</button></form>`}
+}
+function openDlg(d){S.dlg=d;$('#dlgBody').innerHTML='';renderDlg();if(!$('#dlg').open)$('#dlg').showModal()}
+$('#dlg').addEventListener('close',()=>{S.dlg=null});
+
+/* =====================================================================
+   9. EVENTS (delegated)
+   ===================================================================== */
+const ACT={
+ cat:b=>{S.cat=b.dataset.c;renderAll()},
+ add:b=>{S.cart[b.dataset.id]=(S.cart[b.dataset.id]||0)+1;renderCartBar();toast('Added to your order')},
+ qty:b=>{const id=b.dataset.id;S.cart[id]=(S.cart[id]||0)+ +b.dataset.d;if(S.cart[id]<=0)delete S.cart[id];$('#dlgBody').innerHTML='';renderDlg();renderCartBar()},
+ openCart:()=>openDlg({t:'cart'}),closeDlg:()=>$('#dlg').close(),
+ simScan:()=>{const n=+$('#simTable').value;S.table=n;ss('table',String(n));renderAll();toast('Table '+n+' set')},
+ resetTable:()=>{S.table=null;ss('table','');renderAll()},
+ retryMenu:loadMenu,retryOrders:loadOrders,
+ logout:b=>run(b,()=>API.signOut()),
+ openTable:b=>openDlg({t:'table',n:+b.dataset.n}),
+ status:b=>run(b,async()=>{await API.setStatus(+b.dataset.id,b.dataset.s);await loadOrders()}),
+ closeTable:b=>run(b,async()=>{await API.closeTable(+b.dataset.n);await loadOrders()},'Table freed'),
+ tab:b=>{S.tab=b.dataset.t;renderAll()},
+ editItem:b=>openDlg({t:'item',id:b.dataset.id}),
+ toggleItem:b=>{const it=S.menu.find(m=>String(m.id)===b.dataset.id);return run(b,async()=>{await API.saveItem({id:it.id,available:!it.available});await loadMenu()})},
+ delItem:b=>{if(confirm('Delete this menu item?'))return run(b,async()=>{await API.deleteItem(b.dataset.id);await loadMenu()},'Item deleted')}
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&b.tagName!=='SELECT')ACT[b.dataset.act]?.(b)});
+document.addEventListener('change',e=>{const t=e.target;
+ if(t.dataset.act==='statusSel')run(null,async()=>{await API.setStatus(+t.dataset.id,t.value);await loadOrders()},'Status updated');
+ if(t.id==='ofilter'){S.filter=t.value;renderAll()}
+ if(t.id==='qrSel'){S.qrTable=+t.value;renderAll()}});
+document.addEventListener('submit',async e=>{const f=e.target,k=f.dataset.form;if(!k)return;e.preventDefault();const btn=f.querySelector('button:not([type=button])'),d=new FormData(f);
+ if(k==='login')await run(btn,()=>API.signIn(d.get('email').trim(),d.get('password')),'Logged in');
+ if(k==='item')await run(btn,async()=>{const id=d.get('id');
+  await API.saveItem({...(id?{id}:{}),name:d.get('name').trim(),description:d.get('description').trim(),price:Number(d.get('price')),emoji:d.get('emoji').trim()||null,category:d.get('category').trim(),available:d.has('available')});
+  $('#dlg').close();await loadMenu()},'Item saved');
+ if(k==='order'){const L=cartLines(),table=S.table||+d.get('table'),name=d.get('name').trim();
+  if(!L.length||!table||!name)return toast('Add items, your name and your table first.',true);
+  const ok=await run(btn,()=>API.insertOrder({table_id:table,customer_name:name,items:L,total:L.reduce((s,l)=>s+l.price*l.qty,0),status:'new'}).then(()=>true));
+  if(ok){ss('name',name);S.table=table;ss('table',String(table));S.cart={};$('#dlg').close();renderAll();toast('Order sent to the kitchen for table '+table)}}
+});
+window.addEventListener('hashchange',renderAll);
+
+/* =====================================================================
+   10. BOOT
+   ===================================================================== */
+(async function init(){
+ readTable();renderAll();
+ sb.auth.onAuthStateChange(async(_e,session)=>{S.session=session;if(session){subscribeLive();await Promise.all([loadMenu(),loadOrders()])}else{S.orders=[];S.oState='idle';await loadMenu()}});
+ try{const {data}=await sb.auth.getSession();if(!data.session){S.session=null;await loadMenu();subscribeLive()}}catch(e){console.error(e);S.mState='error';S.mErr=e.message;renderAll()}
+})();
+</script>
+</body>
+</html>
